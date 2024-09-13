@@ -1,23 +1,35 @@
 let pyodide;
 
-async function loadPyodide() {
-    pyodide = await loadPyodide();
-    await pyodide.loadPackage(["numpy", "scikit-learn", "pandas"]);
-    await pyodide.runPythonAsync(`
-        import micropip
-        await micropip.install('colormath')
-    `);
-    document.querySelector('button').disabled = false;
-    document.getElementById('loading').textContent = 'Ready!';
-    setTimeout(() => {
-        document.getElementById('loading').classList.add('hidden');
-    }, 2000);
+async function initializePyodide() {
+    try {
+        document.getElementById('loading').textContent = 'Loading Pyodide...';
+        document.getElementById('loading').classList.remove('hidden');
+        
+        pyodide = await loadPyodide();
+        
+        document.getElementById('loading').textContent = 'Loading packages...';
+        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas"]);
+        
+        document.getElementById('loading').textContent = 'Installing colormath...';
+        await pyodide.runPythonAsync(`
+            import micropip
+            await micropip.install('colormath')
+        `);
+        
+        document.querySelector('button').disabled = false;
+        document.getElementById('loading').textContent = 'Ready!';
+        setTimeout(() => {
+            document.getElementById('loading').classList.add('hidden');
+        }, 2000);
+    } catch (error) {
+        console.error('Failed to initialize Pyodide:', error);
+        document.getElementById('loading').textContent = 'Failed to load. Please refresh the page.';
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('button').disabled = true;
-    document.getElementById('loading').classList.remove('hidden');
-    loadPyodide();
+    initializePyodide();
 });
 
 function showError(message) {
@@ -56,6 +68,7 @@ async function processColors() {
         return;
     }
 
+    document.getElementById('loading').textContent = 'Processing colors...';
     document.getElementById('loading').classList.remove('hidden');
 
     try {
