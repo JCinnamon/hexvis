@@ -8,7 +8,7 @@ async function initializePyodide() {
         pyodide = await loadPyodide();
         
         document.getElementById('loading').textContent = 'Loading packages...';
-        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas"]);
+        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas", "micropip"]);
         
         document.getElementById('loading').textContent = 'Installing colormath...';
         await pyodide.runPythonAsync(`
@@ -16,6 +16,9 @@ async function initializePyodide() {
             await micropip.install('colormath')
         `);
         
+        // Add a small delay before finalizing
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         document.querySelector('button').disabled = false;
         document.getElementById('loading').textContent = 'Ready!';
         setTimeout(() => {
@@ -23,7 +26,7 @@ async function initializePyodide() {
         }, 2000);
     } catch (error) {
         console.error('Failed to initialize Pyodide:', error);
-        document.getElementById('loading').textContent = 'Failed to load. Please refresh the page.';
+        document.getElementById('loading').textContent = 'Failed to load. Please refresh the page and try again.';
     }
 }
 
