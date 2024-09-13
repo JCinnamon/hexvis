@@ -8,7 +8,21 @@ async function initializePyodide() {
         pyodide = await loadPyodide();
         
         document.getElementById('loading').textContent = 'Loading packages...';
-        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas", "micropip"]);
+        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas"]);
+        
+        document.getElementById('loading').textContent = 'Installing micropip...';
+        await pyodide.runPythonAsync(`
+            import sys
+            import js
+            sys.path.append(js.navigator.userAgent)
+            from pyodide.http import pyfetch
+            response = await pyfetch("https://bootstrap.pypa.io/get-pip.py")
+            await response.unpack_archive()
+            import importlib
+            importlib.invalidate_caches()
+            import pip
+            await pip.main(["install", "micropip"])
+        `);
         
         document.getElementById('loading').textContent = 'Installing colormath...';
         await pyodide.runPythonAsync(`
@@ -29,7 +43,6 @@ async function initializePyodide() {
         document.getElementById('loading').textContent = 'Failed to load. Please refresh the page and try again.';
     }
 }
-
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('button').disabled = true;
     initializePyodide();
