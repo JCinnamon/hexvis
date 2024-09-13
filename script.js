@@ -8,13 +8,7 @@ async function initializePyodide() {
         pyodide = await loadPyodide();
         
         document.getElementById('loading').textContent = 'Loading packages...';
-        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas", "micropip"]);
-        
-        document.getElementById('loading').textContent = 'Installing colormath...';
-        await pyodide.runPythonAsync(`
-            import micropip
-            await micropip.install('colormath')
-        `);
+        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas"]);
         
         // Add a small delay before finalizing
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -29,6 +23,7 @@ async function initializePyodide() {
         document.getElementById('loading').textContent = 'Failed to load. Please refresh the page and try again.';
     }
 }
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('button').disabled = true;
     initializePyodide();
@@ -49,43 +44,85 @@ function isValidHexCode(hexCode) {
 }
 
 async function processColors() {
-    // ... (previous code remains the same)
+    hideError();
+    const hexInput = document.getElementById('hexInput').value;
+    const hexcodes = hexInput.split('\n').map(code => code.trim()).filter(code => code !== '');
+    
+    if (hexcodes.length === 0) {
+        showError('Please enter at least one hexcode.');
+        return;
+    }
+
+    const invalidHexcodes = hexcodes.filter(code => !isValidHexCode(code));
+    if (invalidHexcodes.length > 0) {
+        showError(`Invalid hexcodes: ${invalidHexcodes.join(', ')}`);
+        return;
+    }
+
+    const numClusters = parseInt(document.getElementById('numClusters').value);
+    if (isNaN(numClusters) || numClusters < 1 || numClusters > 20) {
+        showError('Number of clusters must be between 1 and 20.');
+        return;
+    }
+
+    document.getElementById('loading').textContent = 'Processing colors...';
+    document.getElementById('loading').classList.remove('hidden');
 
     try {
         const result = await pyodide.runPythonAsync(`
-            import pandas as pd
             import numpy as np
             from sklearn.cluster import KMeans
             from sklearn.preprocessing import StandardScaler
-            from colormath.color_objects import sRGBColor, LCHabColor
-            from colormath.color_conversions import convert_color
             import json
 
-            def hex_to_lch(hex_color):
+            def hex_to_rgb(hex_color):
                 hex_color = hex_color.lstrip('#')
-                rgb = sRGBColor(*(int(hex_color[i:i+2], 16)/255 for i in (0, 2, 4)))
-                return convert_color(rgb, LCHabColor)
+                return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+            def rgb_to_hsl(r, g, b):
+                r, g, b = r/255.0, g/255.0, b/255.0
+                cmax = max(r, g, b)
+                cmin = min(r, g, b)
+                delta = cmax - cmin
+
+                l = (cmax + cmin) / 2
+
+                if delta == 0:
+                    h = 0
+                    s = 0
+                elif cmax == r:
+                    h = ((g - b) / delta) % 6
+                elif cmax == g:
+                    h = (b - r) / delta + 2
+                else:
+                    h = (r - g) / delta + 4
+
+                h *= 60
+
+                if delta == 0:
+                    s = 0
+                else:
+                    s = delta / (1 - abs(2 * l - 1))
+
+                return (h, s, l)
 
             hexcodes = ${JSON.stringify(hexcodes)}
-            color_dict = pd.DataFrame({'Hexcode': hexcodes, 'value': [1] * len(hexcodes)})
+            rgb_values = np.array([hex_to_rgb(hex_code) for hex_code in hexcodes])
+            hsl_values = np.array([rgb_to_hsl(*rgb) for rgb in rgb_values])
 
-            lch_values = np.array([hex_to_lch(hex_code).get_value_tuple() for hex_code in color_dict['Hexcode']])
             scaler = StandardScaler()
-            lch_normalized = scaler.fit_transform(lch_values)
+            hsl_normalized = scaler.fit_transform(hsl_values)
 
             n_clusters = ${numClusters}
             kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            color_dict['cluster'] = kmeans.fit_predict(lch_normalized)
-
-            def sort_colors_lch(colors):
-                lch_colors = [hex_to_lch(c).get_value_tuple() for c in colors]
-                return [x for _, x in sorted(zip(lch_colors, colors), key=lambda pair: (pair[0][2], pair[0][1], pair[0][0]))]
+            clusters = kmeans.fit_predict(hsl_normalized)
 
             sorted_colors = []
             for cluster in range(n_clusters):
-                cluster_data = color_dict[color_dict['cluster'] == cluster]
-                sorted_cluster_colors = sort_colors_lch(cluster_data['Hexcode'].tolist())
-                sorted_colors.extend(sorted_cluster_colors)
+                cluster_colors = [hexcodes[i] for i in range(len(hexcodes)) if clusters[i] == cluster]
+                cluster_hsl = [hsl_values[i] for i in range(len(hexcodes)) if clusters[i] == cluster]
+                sorted_cluster = [x for _, x in sorted(zip(cluster_hsl, cluster_colors), key=lambda pair: (pair[0][0], pair[0][1], pair[0][2]))]
+                sorted_colors.extend(sorted_cluster)
 
             return json.dumps({
                 'colors': sorted_colors,
@@ -95,7 +132,7 @@ async function processColors() {
 
         const plotData = JSON.parse(result);
         const layout = {
-            title: 'Color Palette (Sorted by LCH Color Space)',
+            title: 'Color Palette (Sorted by HSL Color Space)',
             xaxis: { title: 'Color Index' },
             yaxis: { title: '' },
             showlegend: false,
