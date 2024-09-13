@@ -8,21 +8,7 @@ async function initializePyodide() {
         pyodide = await loadPyodide();
         
         document.getElementById('loading').textContent = 'Loading packages...';
-        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas"]);
-        
-        document.getElementById('loading').textContent = 'Installing micropip...';
-        await pyodide.runPythonAsync(`
-            import sys
-            import js
-            sys.path.append(js.navigator.userAgent)
-            from pyodide.http import pyfetch
-            response = await pyfetch("https://bootstrap.pypa.io/get-pip.py")
-            await response.unpack_archive()
-            import importlib
-            importlib.invalidate_caches()
-            import pip
-            await pip.main(["install", "micropip"])
-        `);
+        await pyodide.loadPackage(["numpy", "scikit-learn", "pandas", "micropip"]);
         
         document.getElementById('loading').textContent = 'Installing colormath...';
         await pyodide.runPythonAsync(`
@@ -63,29 +49,7 @@ function isValidHexCode(hexCode) {
 }
 
 async function processColors() {
-    hideError();
-    const hexInput = document.getElementById('hexInput').value;
-    const hexcodes = hexInput.split('\n').map(code => code.trim()).filter(code => code !== '');
-    
-    if (hexcodes.length === 0) {
-        showError('Please enter at least one hexcode.');
-        return;
-    }
-
-    const invalidHexcodes = hexcodes.filter(code => !isValidHexCode(code));
-    if (invalidHexcodes.length > 0) {
-        showError(`Invalid hexcodes: ${invalidHexcodes.join(', ')}`);
-        return;
-    }
-
-    const numClusters = parseInt(document.getElementById('numClusters').value);
-    if (isNaN(numClusters) || numClusters < 1 || numClusters > 20) {
-        showError('Number of clusters must be between 1 and 20.');
-        return;
-    }
-
-    document.getElementById('loading').textContent = 'Processing colors...';
-    document.getElementById('loading').classList.remove('hidden');
+    // ... (previous code remains the same)
 
     try {
         const result = await pyodide.runPythonAsync(`
@@ -95,7 +59,7 @@ async function processColors() {
             from sklearn.preprocessing import StandardScaler
             from colormath.color_objects import sRGBColor, LCHabColor
             from colormath.color_conversions import convert_color
-            import plotly.graph_objects as go
+            import json
 
             def hex_to_lch(hex_color):
                 hex_color = hex_color.lstrip('#')
@@ -123,28 +87,29 @@ async function processColors() {
                 sorted_cluster_colors = sort_colors_lch(cluster_data['Hexcode'].tolist())
                 sorted_colors.extend(sorted_cluster_colors)
 
-            # Create a plotly figure
-            fig = go.Figure(data=[go.Bar(
-                x=list(range(len(sorted_colors))),
-                y=[1] * len(sorted_colors),
-                marker_color=sorted_colors,
-                hovertext=sorted_colors,
-                hoverinfo='text'
-            )])
-
-            fig.update_layout(
-                title='Color Palette (Sorted by LCH Color Space)',
-                xaxis_title='Color Index',
-                yaxis_title='',
-                showlegend=False,
-                height=400
-            )
-
-            return fig.to_json()
+            return json.dumps({
+                'colors': sorted_colors,
+                'values': [1] * len(sorted_colors)
+            })
         `);
 
-        const plotlyJson = JSON.parse(result);
-        Plotly.newPlot('result', plotlyJson.data, plotlyJson.layout);
+        const plotData = JSON.parse(result);
+        const layout = {
+            title: 'Color Palette (Sorted by LCH Color Space)',
+            xaxis: { title: 'Color Index' },
+            yaxis: { title: '' },
+            showlegend: false,
+            height: 400
+        };
+
+        Plotly.newPlot('result', [{
+            x: Array.from({ length: plotData.colors.length }, (_, i) => i),
+            y: plotData.values,
+            type: 'bar',
+            marker: { color: plotData.colors },
+            hovertext: plotData.colors,
+            hoverinfo: 'text'
+        }], layout);
     } catch (error) {
         showError(`An error occurred: ${error.message}`);
     } finally {
